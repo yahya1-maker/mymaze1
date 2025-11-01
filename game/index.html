@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Responsive Maze Game</title>
+<style>
+  :root{
+    --bg:#0f172a;
+    --panel:#0b1220;
+    --line:#38bdf8;
+    --player:#22c55e;
+    --goal:#eab308;
+    --btn-bg:#38bdf8;
+  }
+  html,body{
+    height:100%;
+    margin:0;
+    font-family:Arial, Helvetica, sans-serif;
+    background:var(--bg);
+    color:#fff;
+  }
+  .app{
+    min-height:100%;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+    align-items:center;
+    padding:14px;
+    box-sizing:border-box;
+  }
+
+  .topbar{
+    width:100%;
+    max-width:920px;
+    display:flex;
+    gap:10px;
+    align-items:center;
+    justify-content:space-between;
+  }
+  .title{ font-weight:700; font-size:18px; }
+  .controls-row{
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
+  }
+
+  .size-btn{
+    background:transparent;
+    color:var(--line);
+    border:1px solid rgba(56,189,248,0.15);
+    padding:6px 10px;
+    border-radius:8px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .size-btn.active{
+    background:var(--btn-bg);
+    color:#071025;
+    box-shadow:0 6px 18px rgba(56,189,248,0.12);
+  }
+
+  .canvas-wrap{
+    width:100%;
+    max-width:920px;
+    display:flex;
+    justify-content:center;
+  }
+
+  canvas{
+    background:#0b1220;
+    border-radius:10px;
+    border:2px solid var(--line);
+    touch-action:none;
+    display:block;
+  }
+
+  .ui{
+    display:flex;
+    gap:12px;
+    align-items:center;
+    justify-content:center;
+    flex-wrap:wrap;
+    max-width:920px;
+    width:100%;
+  }
+
+  .dpad{
+    display:grid;
+    grid-template-columns:repeat(3,56px);
+    grid-template-rows:repeat(2,56px);
+    gap:8px;
+    justify-content:center;
+    align-items:center;
+  }
+  .dpad button{
+    width:56px;height:56px;border-radius:10px;border:0;background:var(--btn-bg);color:#071025;font-weight:700;font-size:18px;cursor:pointer;
+    box-shadow:0 6px 18px rgba(56,189,248,0.12);
+  }
+  .dpad .up{ grid-column:2;grid-row:1; }
+  .dpad .left{ grid-column:1;grid-row:2; }
+  .dpad .down{ grid-column:2;grid-row:2; }
+  .dpad .right{ grid-column:3;grid-row:2; }
+
+  .action-btn{
+    background:#22c55e;border:0;padding:10px 14px;border-radius:10px;color:#041414;font-weight:700;cursor:pointer;
+  }
+  .small{
+    padding:6px 8px;border-radius:8px;font-size:14px;background:transparent;border:1px solid rgba(255,255,255,0.06);color:#dbeafe;cursor:pointer;
+  }
+
+  .meta{ font-size:13px; opacity:0.9; }
+  @media (max-width:520px){
+    .dpad{ grid-template-columns:repeat(3,48px); grid-template-rows:repeat(2,48px); }
+    .dpad button{ width:48px;height:48px; font-size:16px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <div class="title">Maze Game — Mobile-friendly</div>
+    <div class="controls-row">
+      <button class="size-btn active" data-size="10">10 × 10</button>
+      <button class="size-btn" data-size="15">15 × 15</button>
+      <button class="size-btn" data-size="20">20 × 20</button>
+      <button class="size-btn" data-size="30">30 × 30</button>
+    </div>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="maze"></canvas>
+  </div>
+
+  <div class="ui">
+    <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
+      <div class="dpad" aria-hidden="true">
+        <button class="up">↑</button>
+        <button class="left">←</button>
+        <button class="down">↓</button>
+        <button class="right">→</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="action-btn" id="newMaze">🔁 New Maze</button>
+        <button class="small" id="solveBtn">Show Solution</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-start;">
+      <div class="meta" id="info">Size: <b id="currentSize">10×10</b> — Use arrows or swipe</div>
+      <div class="meta">Player: <span id="pos">0,0</span> — Goal: <span id="goalPos">—</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* Responsive maze with selectable sizes.
+   - default size 10x10
+   - cell size computed so maze fits viewport
+   - supports touch swipe, buttons, keyboard
+*/
+
+const canvas = document.getElementById('maze');
+const ctx = canvas.getContext('2d');
+
+let GRID = 10;
+let cols = GRID, rows = GRID;
+let cellSize = 24;
+let maze = [];
+let stack = [];
+let player = {x:0, y:0};
+let goal = {x:cols-1, y:rows-1};
+let showingSolution = false;
+let solutionPath = [];
+
+// Responsive sizing function
+function fitCanvasToScreen() {
+  // leave margins for controls; compute max square size
+  const maxWidth = Math.min(window.innerWidth - 28, 920);
+  // height allowance reduced for controls
+  const maxHeight = Math.max(window.innerHeight - 220, 200);
+  const side = Math.min(maxWidth, maxHeight);
+  // compute cell size so it divides evenly
+  cellSize = Math.floor(side / GRID);
+  if (cellSize < 6) cellSize = 6; // minimal cell size for visibility
+  cols = GRID;
+  rows = GRID;
+  // set canvas logical pixel size with DPR for sharp lines
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+  canvas.style.width = (cellSize * cols) + 'px';
+  canvas.style.height = (cellSize * rows) + 'px';
+  canvas.width = cellSize * cols * dpr;
+  canvas.height = cellSize * rows * dpr;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.lineCap = 'square';
+}
+
+// Cell class
+class Cell {
+  constructor(x,y){
+    this.x = x; this.y = y;
+    this.visited = false;
+    this.walls = [true,true,true,true]; // top,right,bottom,left
+  }
+  draw(){
+    const x = this.x * cellSize;
+    const y = this.y * cellSize;
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = Math.max(1, cellSize * 0.08);
+    if (this.walls[0]) drawLine(x, y, x + cellSize, y);
+    if (this.walls[1]) drawLine(x + cellSize, y, x + cellSize, y + cellSize);
+    if (this.walls[2]) drawLine(x + cellSize, y + cellSize, x, y + cellSize);
+    if (this.walls[3]) drawLine(x, y + cellSize, x, y);
+  }
+  getUnvisitedNeighbors(){
+    const neighbors = [];
+    const dirs = [
+      {dx:0, dy:-1, wall:0, opposite:2},
+      {dx:1, dy:0, wall:1, opposite:3},
+      {dx:0, dy:1, wall:2, opposite:0},
+      {dx:-1, dy:0, wall:3, opposite:1}
+    ];
+    for (const d of dirs){
+      const nx = this.x + d.dx, ny = this.y + d.dy;
+      if (nx>=0 && nx<cols && ny>=0 && ny<rows && !maze[ny][nx].visited){
+        neighbors.push({cell:maze[ny][nx], wall:d.wall, opposite:d.opposite});
+      }
+    }
+    return neighbors;
+  }
+}
+
+function drawLine(x1,y1,x2,y2){
+  ctx.beginPath();
+  ctx.moveTo(x1 + 0.5, y1 + 0.5);
+  ctx.lineTo(x2 + 0.5, y2 + 0.5);
+  ctx.stroke();
+}
+
+function generateMaze(){
+  maze = [];
+  for (let y=0;y<rows;y++){
+    const row = [];
+    for (let x=0;x<cols;x++) row.push(new Cell(x,y));
+    maze.push(row);
+  }
+  // recursive backtracker
+  const start = maze[0][0];
+  start.visited = true;
+  stack = [start];
+  while(stack.length){
+    const cell = stack[stack.length-1];
+    const neighbors = cell.getUnvisitedNeighbors();
+    if (neighbors.length){
+      const next = neighbors[Math.floor(Math.random()*neighbors.length)];
+      cell.walls[next.wall] = false;
+      next.cell.walls[next.opposite] = false;
+      next.cell.visited = true;
+      stack.push(next.cell);
+    } else {
+      stack.pop();
+    }
+  }
+}
+
+function drawMaze(){
+  // clear
+  ctx.fillStyle = '#0b1220';
+  ctx.fillRect(0,0, canvas.width, canvas.height);
+  // draw cells
+  for (const row of maze) for (const cell of row) cell.draw();
+  drawGoal();
+  drawPlayer();
+  if (showingSolution && solutionPath.length) drawSolution();
+}
+
+function drawPlayer(){
+  ctx.fillStyle = '#22c55e';
+  const r = Math.max(2, cellSize * 0.28);
+  ctx.beginPath();
+  ctx.arc(player.x * cellSize + cellSize/2, player.y * cellSize + cellSize/2, r, 0, Math.PI*2);
+  ctx.fill();
+  updateInfo();
+}
+
+function drawGoal(){
+  ctx.fillStyle = '#eab308';
+  const r = Math.max(2, cellSize * 0.28);
+  ctx.beginPath();
+  ctx.arc(goal.x * cellSize + cellSize/2, goal.y * cellSize + cellSize/2, r, 0, Math.PI*2);
+  ctx.fill();
+}
+
+function drawSolution(){
+  ctx.strokeStyle = 'rgba(234,179,8,0.95)';
+  ctx.lineWidth = Math.max(2, cellSize * 0.15);
+  ctx.beginPath();
+  for (let i=0;i<solutionPath.length;i++){
+    const p = solutionPath[i];
+    const cx = p.x * cellSize + cellSize/2;
+    const cy = p.y * cellSize + cellSize/2;
+    if (i===0) ctx.moveTo(cx, cy);
+    else ctx.lineTo(cx, cy);
+  }
+  ctx.stroke();
+}
+
+// movement with wall checks
+function move(dx,dy){
+  const cell = maze[player.y][player.x];
+  if (dx===1 && !cell.walls[1]) player.x++;
+  if (dx===-1 && !cell.walls[3]) player.x--;
+  if (dy===1 && !cell.walls[2]) player.y++;
+  if (dy===-1 && !cell.walls[0]) player.y--;
+  checkWin();
+  drawMaze();
+}
+
+function checkWin(){
+  if (player.x===goal.x && player.y===goal.y){
+    setTimeout(()=>alert('🎉 You reached the goal!'), 80);
+  }
+}
+
+function startGame(){
+  fitCanvasToScreen();
+  generateMaze();
+  player = {x:0, y:0};
+  goal = {x:cols-1, y:rows-1};
+  showingSolution = false;
+  solutionPath = [];
+  document.getElementById('currentSize').textContent = `${GRID}×${GRID}`;
+  document.getElementById('goalPos').textContent = `${goal.x},${goal.y}`;
+  drawMaze();
+}
+
+// simple BFS to find shortest path (for "Show Solution")
+function findSolution(){
+  const q = [];
+  const visited = Array.from({length:rows}, ()=>Array(cols).fill(false));
+  const parent = Array.from({length:rows}, ()=>Array(cols).fill(null));
+  q.push({x:player.x, y:player.y});
+  visited[player.y][player.x] = true;
+  let found = false;
+  while(q.length && !found){
+    const cur = q.shift();
+    const c = maze[cur.y][cur.x];
+    const dirs = [
+      {dx:0,dy:-1,wall:0},
+      {dx:1,dy:0,wall:1},
+      {dx:0,dy:1,wall:2},
+      {dx:-1,dy:0,wall:3}
+    ];
+    for (const d of dirs){
+      if (!c.walls[d.wall]){
+        const nx = cur.x + d.dx, ny = cur.y + d.dy;
+        if (!visited[ny][nx]){
+          visited[ny][nx]=true;
+          parent[ny][nx]=cur;
+          q.push({x:nx,y:ny});
+          if (nx===goal.x && ny===goal.y){ found = true; break; }
+        }
+      }
+    }
+  }
+  // reconstruct
+  const path = [];
+  if (visited[goal.y][goal.x]){
+    let cur = {x:goal.x, y:goal.y};
+    while(cur){
+      path.push(cur);
+      cur = parent[cur.y][cur.x];
+    }
+    path.reverse();
+  }
+  return path;
+}
+
+// UI wiring
+document.querySelectorAll('.size-btn').forEach(b=>{
+  b.addEventListener('click', ()=>{
+    document.querySelectorAll('.size-btn').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    GRID = parseInt(b.dataset.size,10);
+    startGame();
+  });
+});
+
+document.getElementById('newMaze').addEventListener('click', ()=> startGame());
+document.getElementById('solveBtn').addEventListener('click', ()=>{
+  if (showingSolution){
+    showingSolution = false;
+    solutionPath = [];
+    document.getElementById('solveBtn').textContent = 'Show Solution';
+  } else {
+    solutionPath = findSolution();
+    showingSolution = true;
+    document.getElementById('solveBtn').textContent = 'Hide Solution';
+  }
+  drawMaze();
+});
+
+// dpad
+document.querySelector('.up').onclick = ()=> move(0,-1);
+document.querySelector('.down').onclick = ()=> move(0,1);
+document.querySelector('.left').onclick = ()=> move(-1,0);
+document.querySelector('.right').onclick = ()=> move(1,0);
+
+// keyboard
+window.addEventListener('keydown', (e)=>{
+  if (e.key === 'ArrowUp') move(0,-1);
+  if (e.key === 'ArrowDown') move(0,1);
+  if (e.key === 'ArrowLeft') move(-1,0);
+  if (e.key === 'ArrowRight') move(1,0);
+});
+
+// update info
+function updateInfo(){
+  document.getElementById('pos').textContent = `${player.x},${player.y}`;
+}
+
+// Touch swipe support
+let touchStart = null;
+canvas.addEventListener('touchstart', (e)=>{
+  const t = e.touches[0];
+  touchStart = {x:t.clientX, y:t.clientY, time:Date.now()};
+}, {passive:true});
+
+canvas.addEventListener('touchend', (e)=>{
+  if (!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const dt = Date.now() - touchStart.time;
+  touchStart = null;
+  // require some threshold
+  const threshold = 20;
+  if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > threshold){
+    if (dx > 0) move(1,0); else move(-1,0);
+  } else if (Math.abs(dy) > threshold){
+    if (dy > 0) move(0,1); else move(0,-1);
+  }
+}, {passive:true});
+
+// handle resize
+window.addEventListener('resize', ()=>{
+  // adjust canvas & redraw
+  fitCanvasToScreen();
+  drawMaze();
+});
+
+// initialize
+startGame();
+</script>
+</body>
+</html>
