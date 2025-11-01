@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MAZE GAME</title>
+<style>
+  body {
+    margin: 0;
+    height: 100vh;
+    font-family: Arial, sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: #001; /* Splash default */
+    background-size: cover;
+    background-position: center;
+    transition: background 1s;
+    color: white;
+  }
+  .screen { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; }
+  .hidden { display: none; }
+
+  /* Splash */
+  #splash h1 { font-size: 2em; }
+  .loading-bar { width: 300px; height: 14px; background: #333; border-radius: 8px; margin-top: 12px; overflow: hidden; }
+  .bar { height: 100%; width: 0%; background: linear-gradient(90deg, #0f0,#0a0); transition: width 0.2s; }
+
+  /* Main Menu */
+  #menu h1 { font-size: 36px; margin-bottom: 24px; }
+  button {
+    padding: 12px 28px;
+    font-size: 18px;
+    border: none;
+    border-radius: 10px;
+    background: #00cc66;
+    color: #001;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  button:hover { background: #00ff88; }
+</style>
+</head>
+<body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash" class="screen">
+  <h1>Fateh Games</h1>
+  <div class="loading-bar"><div class="bar" id="loadbar"></div></div>
+  <p>Loading...</p>
+</div>
+
+<!-- MAIN MENU -->
+<div id="menu" class="screen hidden">
+  <!-- Logo yahan lagao -->
+  <img src="logo.png" alt="Game Logo" width="300">
+  <h1>MAZE GAME</h1>
+  <button id="playBtn">Play</button>
+</div>
+
+<script>
+// SPLASH LOADING
+const splash = document.getElementById("splash");
+const menu = document.getElementById("menu");
+const loadbar = document.getElementById("loadbar");
+let p = 0;
+const t = setInterval(()=>{
+  p += Math.floor(Math.random()*15)+5;
+  if(p>100) p=100;
+  loadbar.style.width = p+"%";
+  if(p>=100){
+    clearInterval(t);
+    setTimeout(showMenu, 500);
+  }
+},200);
+
+// SHOW MAIN MENU
+function showMenu(){
+  splash.classList.add("hidden");
+  menu.classList.remove("hidden");
+  document.body.style.backgroundImage = "url('background.jpg')"; // background image
+}
+
+// PLAY BUTTON
+document.getElementById("playBtn").onclick = () => {
+    // Tumhare game folder ka index.html open kare
+    window.location.href = "play/index.html"; // yahan game folder ka path
+};
+</script>
+
+</body>
+</html>
